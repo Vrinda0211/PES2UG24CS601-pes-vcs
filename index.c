@@ -146,10 +146,14 @@ static int compare_index_entries(const void *a, const void *b) {
 }
 
 int index_load(Index *index) {
-    // TODO: Implement index loading
-    // (See Lab Appendix for logical steps)
-    (void)index;
-    return -1;
+    if (!index) return -1;
+    index->count = 0;
+
+    FILE *f = fopen(INDEX_FILE, "r");
+    if (!f) {
+        if (errno == ENOENT) return 0;
+        return -1;
+    }
 }
 
 // Save the index to .pes/index atomically.
