@@ -187,6 +187,13 @@ int index_load(Index *index) {
         snprintf(e->path, sizeof(e->path), "%s", path);
         index->count++;
     }
+    if (ferror(f)) {
+        fclose(f);
+        return -1;
+    }
+
+    fclose(f);
+    return 0;
 }
 
 // Save the index to .pes/index atomically.
