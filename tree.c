@@ -140,6 +140,58 @@ static int find_tree_entry(const Tree *tree, const char *name) {
     return -1;
 }
 
+static int load_index_for_tree(Index *index) {
+    if (!index) return -1;
+    index->count = 0;
+
+    FILE *f = fopen(INDEX_FILE, "r");
+    if (!f) {
+        if (errno == ENOENT) return 0;
+        return -1;
+    }
+
+    char line[2048];
+    while (fgets(line, sizeof(line), f) != NULL) {
+        if (line[0] == '\n' || line[0] == '\r' || line[0] == '\0') continue;
+        if (index->count >= MAX_INDEX_ENTRIES) {
+            fclose(f);
+            return -1;
+        }
+
+        unsigned int mode;
+        char hex[HASH_HEX_SIZE + 1];
+        uint64_t mtime;
+        unsigned int size;
+        char path[512];
+
+        int parsed = sscanf(line, "%o %64s %" SCNu64 " %u %511[^\r\n]",
+                            &mode, hex, &mtime, &size, path);
+        if (parsed != 5) {
+            fclose(f);
+            return -1;
+        }
+
+        IndexEntry *e = &index->entries[index->count++];
+        memset(e, 0, sizeof(*e));
+        e->mode = (uint32_t)mode;
+        if (hex_to_hash(hex, &e->hash) != 0) {
+            fclose(f);
+            return -1;
+        }
+        e->mtime_sec = mtime;
+        e->size = size;
+        snprintf(e->path, sizeof(e->path), "%s", path);
+    }
+
+    if (ferror(f)) {
+        fclose(f);
+        return -1;
+    }
+
+    fclose(f);
+    return 0;
+}
+
 int tree_from_index(ObjectID *id_out) {
     if (!id_out) return -1;
 
