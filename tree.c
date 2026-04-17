@@ -258,6 +258,14 @@ static int write_tree_level(const Index *index, const char *prefix, ObjectID *id
             memcpy(out->name, dir_name, dir_len + 1);
         }
     }
+    void *raw = NULL;
+    size_t raw_len = 0;
+    if (tree_serialize(&tree, &raw, &raw_len) != 0) return -1;
+
+    int rc = object_write(OBJ_TREE, raw, raw_len, id_out);
+    free(raw);
+    return rc;
+}
 
 int tree_from_index(ObjectID *id_out) {
     if (!id_out) return -1;
