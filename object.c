@@ -138,7 +138,7 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
         free(full);
         return -1;
     }
-    
+
     char final_path[512];
     object_path(id_out, final_path, sizeof(final_path));
 
@@ -166,7 +166,33 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
         }
         written += (size_t)n;
     }
+    
+    if (fsync(fd) != 0) {
+        close(fd);
+        unlink(tmp_path);
+        free(full);
+        return -1;
+    }
+    if (close(fd) != 0) {
+        unlink(tmp_path);
+        free(full);
+        return -1;
+    }
 
+    if (rename(tmp_path, final_path) != 0) {
+        unlink(tmp_path);
+        free(full);
+        return -1;
+    }
+
+    int dir_fd = open(shard_dir, O_RDONLY);
+    if (dir_fd >= 0) {
+        fsync(dir_fd);
+        close(dir_fd);
+    }
+
+    free(full);
+    return 0;
 }
 
 // Read an object from the store.
