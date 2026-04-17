@@ -139,6 +139,34 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
         return -1;
     }
     
+    char final_path[512];
+    object_path(id_out, final_path, sizeof(final_path));
+
+    char tmp_path[512];
+    if (snprintf(tmp_path, sizeof(tmp_path), "%s/.tmp-XXXXXX", shard_dir) >= (int)sizeof(tmp_path)) {
+        free(full);
+        return -1;
+    }
+
+    int fd = mkstemp(tmp_path);
+    if (fd < 0) {
+        free(full);
+        return -1;
+    }
+
+    size_t written = 0;
+    while (written < full_len) {
+        ssize_t n = write(fd, full + written, full_len - written);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            close(fd);
+            unlink(tmp_path);
+            free(full);
+            return -1;
+        }
+        written += (size_t)n;
+    }
+
 }
 
 // Read an object from the store.
