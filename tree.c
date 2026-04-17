@@ -192,6 +192,25 @@ static int load_index_for_tree(Index *index) {
     return 0;
 }
 
+static int write_tree_level(const Index *index, const char *prefix, ObjectID *id_out) {
+    Tree tree;
+    tree.count = 0;
+    size_t prefix_len = strlen(prefix);
+
+    for (int i = 0; i < index->count; i++) {
+        const IndexEntry *entry = &index->entries[i];
+        const char *rel = entry->path;
+
+        if (prefix_len > 0) {
+            if (strncmp(entry->path, prefix, prefix_len) != 0) continue;
+            if (entry->path[prefix_len] != '/') continue;
+            rel = entry->path + prefix_len + 1;
+        }
+
+        if (rel[0] == '\0') continue;
+
+        
+
 int tree_from_index(ObjectID *id_out) {
     if (!id_out) return -1;
 
