@@ -166,7 +166,7 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
         }
         written += (size_t)n;
     }
-    
+
     if (fsync(fd) != 0) {
         close(fd);
         unlink(tmp_path);
@@ -218,7 +218,99 @@ int object_write(ObjectType type, const void *data, size_t len, ObjectID *id_out
 // The caller is responsible for calling free(*data_out).
 // Returns 0 on success, -1 on error (file not found, corrupt, etc.).
 int object_read(const ObjectID *id, ObjectType *type_out, void **data_out, size_t *len_out) {
-    // TODO: Implement
-    (void)id; (void)type_out; (void)data_out; (void)len_out;
-    return -1;
+    if (!id || !type_out || !data_out || !len_out) return -1;
+    *data_out = NULL;
+    *len_out = 0;
+
+    char path[512];
+    object_path(id, path, sizeof(path));
+
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return -1; }
+    long sz = ftell(f);
+    if (sz <= 0) { fclose(f); return -1; }
+    if (fseek(f, 0, SEEK_SET) != 0) { fclose(f); return -1; }
+
+    size_t file_len = (size_t)sz;
+    uint8_t *file_data = malloc(file_len);
+    if (!file_data) { fclose(f); return -1; }
+
+    if (fread(file_data, 1, file_len, f) != file_len) {
+        free(file_data);
+        fclose(f);
+        return -1;
+    }
+    fclose(f);
+
+    ObjectID actual;
+    compute_hash(file_data, file_len, &actual);
+    if (memcmp(actual.hash, id->hash, HASH_SIZE) != 0) {
+        free(file_data);
+        return -1;
+    }
+
+    uint8_t *nul = memchr(file_data, '\0', file_len);
+    if (!nul) {
+        free(file_data);
+        return -1;
+    }
+
+    size_t header_len = (size_t)(nul - file_data);
+    char *header = malloc(header_len + 1);
+    if (!header) {
+        free(file_data);
+        return -1;
+    }
+    memcpy(header, file_data, header_len);
+    header[header_len] = '\0';
+
+    char type_str[16];
+    size_t declared_size = 0;
+    if (sscanf(header, "%15s %zu", type_str, &declared_size) != 2) {
+        free(header);
+        free(file_data);
+        return -1;
+    }
+
+    ObjectType parsed_type;
+    if (strcmp(type_str, "blob") == 0) parsed_type = OBJ_BLOB;
+    else if (strcmp(type_str, "tree") == 0) parsed_type = OBJ_TREE;
+    else if (strcmp(type_str, "commit") == 0) parsed_type = OBJ_COMMIT;
+    else {
+        free(header);
+        free(file_data);
+        return -1;
+    }
+
+    size_t payload_off = header_len + 1;
+    if (payload_off > file_len) {
+        free(header);
+        free(file_data);
+        return -1;
+    }
+    size_t payload_len = file_len - payload_off;
+    if (payload_len != declared_size) {
+        free(header);
+        free(file_data);
+        return -1;
+    }
+
+    uint8_t *payload = malloc(payload_len + 1);
+    if (!payload) {
+        free(header);
+        free(file_data);
+        return -1;
+    }
+    if (payload_len > 0) memcpy(payload, file_data + payload_off, payload_len);
+    payload[payload_len] = '\0';
+
+    *type_out = parsed_type;
+    *data_out = payload;
+    *len_out = payload_len;
+
+    free(header);
+    free(file_data);
+    return 0;
 }
