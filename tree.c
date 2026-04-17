@@ -209,7 +209,55 @@ static int write_tree_level(const Index *index, const char *prefix, ObjectID *id
 
         if (rel[0] == '\0') continue;
 
-        
+        const char *slash = strchr(rel, '/');
+        if (!slash) {
+            int existing = find_tree_entry(&tree, rel);
+            if (existing >= 0) {
+                if (tree.entries[existing].mode == MODE_DIR) return -1;
+                tree.entries[existing].mode = entry->mode;
+                tree.entries[existing].hash = entry->hash;
+                continue;
+            }
+
+            if (tree.count >= MAX_TREE_ENTRIES) return -1;
+            TreeEntry *out = &tree.entries[tree.count++];
+            out->mode = entry->mode;
+            out->hash = entry->hash;
+            if (snprintf(out->name, sizeof(out->name), "%s", rel) >= (int)sizeof(out->name))
+                return -1;
+        } else {
+            size_t dir_len = (size_t)(slash - rel);
+            if (dir_len == 0 || dir_len >= sizeof(tree.entries[0].name)) return -1;
+
+            char dir_name[256];
+            memcpy(dir_name, rel, dir_len);
+            dir_name[dir_len] = '\0';
+
+            int existing = find_tree_entry(&tree, dir_name);
+            if (existing >= 0) {
+                if (tree.entries[existing].mode != MODE_DIR) return -1;
+                continue;
+            }
+
+            char child_prefix[512];
+            int n;
+            if (prefix_len == 0) {
+                n = snprintf(child_prefix, sizeof(child_prefix), "%s", dir_name);
+            } else {
+                n = snprintf(child_prefix, sizeof(child_prefix), "%s/%s", prefix, dir_name);
+            }
+            if (n < 0 || (size_t)n >= sizeof(child_prefix)) return -1;
+
+            ObjectID child_id;
+            if (write_tree_level(index, child_prefix, &child_id) != 0) return -1;
+
+            if (tree.count >= MAX_TREE_ENTRIES) return -1;
+            TreeEntry *out = &tree.entries[tree.count++];
+            out->mode = MODE_DIR;
+            out->hash = child_id;
+            memcpy(out->name, dir_name, dir_len + 1);
+        }
+    }
 
 int tree_from_index(ObjectID *id_out) {
     if (!id_out) return -1;
